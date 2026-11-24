@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Custom Gmail Tabs</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header class="masthead">
+        <p class="kicker">Gmail · Inbox tabs</p>
+        <h1>Custom Gmail Tabs</h1>
+        <p class="lede">
+          Each tab is a saved search. It sits next to Primary, Promotions and the rest, and opens that search
+          when you click it.
+        </p>
+        <span class="status" id="status" role="status" aria-live="polite"></span>
+      </header>
+
+      <section class="preview" aria-label="Preview">
+        <div class="preview-bar" id="preview"></div>
+        <p class="preview-note">Preview. Your Gmail tabs come first and your custom tabs follow, in this order.</p>
+      </section>
+
+      <section class="tabs-section" aria-labelledby="tabs-h">
+        <div class="section-head">
+          <h2 id="tabs-h">Your tabs</h2>
+          <span class="count" id="count"></span>
+        </div>
+
+        <ol class="tab-list" id="list"></ol>
+
+        <div class="empty" id="empty" hidden>
+          <p>No custom tabs yet. Add one, or start from a preset below.</p>
+        </div>
+
+        <div class="add-row">
+          <button type="button" class="btn btn-primary" id="add">
+            <span aria-hidden="true">+</span> Add tab
+          </button>
+          <div class="presets" id="presets" aria-label="Presets"></div>
+        </div>
+      </section>
+
+      <section class="settings" aria-labelledby="settings-h">
+        <h2 id="settings-h">Behaviour</h2>
+        <label class="check">
+          <input type="checkbox" id="strip" />
+          <span>
+            <strong>Keep a tab bar on custom tab results</strong>
+            <small>Gmail hides its tab bar on search results. With this on, a matching bar appears above your
+              results so you can go back to Primary or switch to another tab.</small>
+          </span>
+        </label>
+      </section>
+
+      <section class="tips" aria-labelledby="tips-h">
+        <h2 id="tips-h">Writing queries</h2>
+        <p>Any Gmail search works. Some useful operators:</p>
+        <dl class="ops">
+          <div><dt>from:</dt><dd>sender address or name</dd></div>
+          <div><dt>to: / cc:</dt><dd>recipients</dd></div>
+          <div><dt>label:</dt><dd>a label, e.g. <code>label:clients</code></dd></div>
+          <div><dt>is:unread</dt><dd>also <code>is:starred</code>, <code>is:important</code></dd></div>
+          <div><dt>category:</dt><dd><code>primary</code>, <code>promotions</code>, <code>updates</code>…</dd></div>
+          <div><dt>newer_than:</dt><dd><code>7d</code>, <code>2m</code>, <code>1y</code></dd></div>
+          <div><dt>has:attachment</dt><dd>also <code>filename:pdf</code></dd></div>
+          <div><dt>OR  -  ( )</dt><dd>combine, exclude, group</dd></div>
+        </dl>
+        <p class="hint">Add <code>in:inbox</code> if you only want mail that is still in your inbox.</p>
+      </section>
+
+      <footer class="foot">
+        <div class="io">
+          <button type="button" class="btn btn-quiet" id="export">Export JSON</button>
+          <label class="btn btn-quiet file">
+            Import JSON
+            <input type="file" id="import" accept="application/json,.json" />
+          </label>
+        </div>
+        <p>Your tabs sync through your Chrome profile. Nothing is sent anywhere else.</p>
+      </footer>
+    </main>
+
+    <template id="row-tpl">
+      <li class="row">
+        <div class="grip" title="Drag to reorder" aria-hidden="true">
+          <svg viewBox="0 0 10 16"><circle cx="2" cy="2" r="1.4"/><circle cx="8" cy="2" r="1.4"/><circle cx="2" cy="8" r="1.4"/><circle cx="8" cy="8" r="1.4"/><circle cx="2" cy="14" r="1.4"/><circle cx="8" cy="14" r="1.4"/></svg>
+        </div>
+        <div class="fields">
+          <div class="line">
+            <button type="button" class="swatch" aria-label="Tab colour" aria-expanded="false"></button>
+            <input class="label" type="text" placeholder="Tab name" aria-label="Tab name" maxlength="40" />
+            <label class="toggle" title="Show this tab in Gmail">
+              <input class="enabled" type="checkbox" />
+              <span class="toggle-ui" aria-hidden="true"></span>
+              <span class="sr">Show in Gmail</span>
+            </label>
+          </div>
+          <div class="palette" hidden role="radiogroup" aria-label="Colour"></div>
+          <div class="query-wrap">
+            <span class="query-prefix" aria-hidden="true">search</span>
+            <input class="query" type="text" placeholder="from:boss@example.com is:unread" aria-label="Search query"
+              maxlength="500" spellcheck="false" autocomplete="off" />
+          </div>
+        </div>
+        <div class="actions">
+          <a class="icon-btn try" target="_blank" rel="noopener" title="Try this search in Gmail">
+            <svg viewBox="0 0 24 24"><path d="M14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7zM19 19H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2v7z"/></svg>
+          </a>
+          <button type="button" class="icon-btn up" title="Move up">
+            <svg viewBox="0 0 24 24"><path d="M7.4 15.4 12 10.8l4.6 4.6L18 14l-6-6-6 6z"/></svg>
+          </button>
+          <button type="button" class="icon-btn down" title="Move down">
+            <svg viewBox="0 0 24 24"><path d="M7.4 8.6 12 13.2l4.6-4.6L18 10l-6 6-6-6z"/></svg>
+          </button>
+          <button type="button" class="icon-btn del" title="Delete tab">
+            <svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM8 9h8v10H8V9zm7.5-5-1-1h-5l-1 1H5v2h14V4h-3.5z"/></svg>
+          </button>
+        </div>
+      </li>
+    </template>
+
+    <script src="../shared/core.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

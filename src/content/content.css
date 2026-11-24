@@ -1,0 +1,119 @@
+/* Custom Gmail Tabs — injected styles. Everything is scoped under .cgt-*. */
+
+.cgt-cell {
+  vertical-align: bottom;
+  padding: 0;
+  min-width: 140px;
+}
+
+.cgt-tab {
+  --cgt-color: #0b57d0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-sizing: border-box;
+  height: var(--cgt-height, 48px);
+  padding: 0 16px;
+  max-width: 255px;
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  color: var(--cgt-fg, #444746);
+  font-family: var(--cgt-font, "Google Sans", Roboto, Arial, sans-serif);
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 0.0178571429em;
+  white-space: nowrap;
+  transition: background-color 120ms ease;
+}
+
+.cgt-tab:hover {
+  background-color: rgba(68, 71, 70, 0.08);
+}
+
+.cgt-tab:focus-visible {
+  background-color: rgba(68, 71, 70, 0.12);
+  box-shadow: inset 0 0 0 2px var(--cgt-color);
+}
+
+.cgt-ico {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+  opacity: 0.85;
+}
+
+.cgt-tab .cgt-ico {
+  fill: var(--cgt-color);
+  opacity: 1;
+}
+
+.cgt-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cgt-tab.cgt-active {
+  color: var(--cgt-color);
+}
+
+.cgt-tab.cgt-active::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--cgt-color);
+}
+
+/* Gmail's tab bar overflowed once our tabs were added: share the width equally. */
+table.cgt-fit {
+  table-layout: fixed !important;
+  width: 100% !important;
+}
+
+table.cgt-fit > tbody > tr > *,
+.cgt-fit > [role="tablist"] > * {
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
+table.cgt-fit [role="tab"] {
+  min-width: 0 !important;
+  overflow: hidden;
+}
+
+/* Strip shown above results for a custom tab (Gmail hides its own tab bar there). */
+.cgt-strip {
+  box-sizing: border-box;
+  width: 100%;
+  color: var(--cgt-fg, #444746);
+  border-bottom: 1px solid color-mix(in srgb, currentColor 18%, transparent);
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.cgt-strip-list {
+  display: flex;
+  align-items: stretch;
+}
+
+.cgt-strip .cgt-tab {
+  flex: 1 1 0;
+  min-width: 130px;
+  height: 48px;
+}
+
+/* Gmail's built-in categories in the strip keep a neutral icon until active. */
+.cgt-strip .cgt-tab:not([style*="--cgt-color"]) .cgt-ico {
+  fill: currentColor;
+}
+
+.cgt-strip .cgt-tab:not([style*="--cgt-color"]).cgt-active {
+  color: #0b57d0;
+}

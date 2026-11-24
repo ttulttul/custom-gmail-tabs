@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Custom Gmail Tabs",
+  "short_name": "Gmail Tabs",
+  "version": "0.1.0",
+  "description": "Add your own Gmail inbox tabs, each backed by a search query, alongside Primary, Promotions, Updates and Forums.",
+  "permissions": ["storage"],
+  "content_scripts": [
+    {
+      "matches": ["https://mail.google.com/*"],
+      "js": ["src/shared/core.js", "src/content/content.js"],
+      "css": ["src/content/content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_ui": {
+    "page": "src/options/options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Custom Gmail Tabs",
+    "default_popup": "src/popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  }
+}

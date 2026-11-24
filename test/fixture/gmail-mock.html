@@ -1,0 +1,188 @@
+<!doctype html>
+<!--
+  A rough stand-in for Gmail's inbox DOM (roles and structure, not class names)
+  used to exercise the content script in a real browser.
+    ?mode=test      run assertions, write JSON to #result (default)
+    ?mode=inbox     stop on the inbox view (for screenshots)
+    ?mode=results   stop on a custom tab's results (for screenshots)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Mock Gmail</title>
+<link rel="stylesheet" href="../../src/content/content.css" />
+<style>
+  body { margin: 0; font: 14px Roboto, Arial, sans-serif; background: #f6f8fc; color: #1f1f1f; }
+  .app { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: 64px 1fr; height: 100vh; }
+  .top { grid-column: 1 / 3; display: flex; align-items: center; gap: 16px; padding: 0 16px; }
+  .logo { width: 210px; font: 500 22px "Google Sans", Arial; color: #444746; }
+  .search { flex: 1; max-width: 720px; height: 46px; border-radius: 24px; background: #e9eef6; display: flex; align-items: center; padding: 0 20px; color: #444746; }
+  nav { padding: 8px 0; }
+  nav div { padding: 6px 24px; border-radius: 0 16px 16px 0; margin-right: 12px; color: #444746; }
+  nav div.on { background: #d3e3fd; font-weight: 700; color: #001d35; }
+  .panel { background: #fff; border-radius: 16px; margin: 0 16px 16px 0; overflow: hidden; display: flex; flex-direction: column; }
+  .toolbar { height: 48px; display: flex; align-items: center; padding: 0 16px; color: #5f6368; border-bottom: 0; }
+  [role="main"] { flex: 1; overflow: auto; }
+  table.tabs { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1px solid rgba(100,121,143,.12); }
+  table.tabs td { width: 255px; }
+  [role="tab"].nt { display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 16px; color: #444746; font: 500 14px "Google Sans", Arial; cursor: pointer; position: relative; }
+  [role="tab"].nt[aria-selected="true"] { color: #0b57d0; }
+  [role="tab"].nt[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 3px; background: #0b57d0; border-radius: 3px 3px 0 0; }
+  .nt i { width: 20px; height: 20px; border-radius: 4px; background: currentColor; opacity: .7; }
+  .row { display: grid; grid-template-columns: 200px 1fr 80px; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #f1f3f4; }
+  .row b { font-weight: 700; }
+  .row span:last-child { text-align: right; color: #5f6368; font-size: 12px; }
+  #result { display: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top"><div class="logo">Mock Gmail</div><div class="search" id="searchbox">Search mail</div></div>
+  <nav><div class="on">Inbox</div><div>Starred</div><div>Snoozed</div><div>Sent</div><div>Drafts</div></nav>
+  <div class="panel">
+    <div class="toolbar" gh="mtb">☐ ⟳ ⋮</div>
+    <div role="main">
+      <div id="inbox-view">
+        <table class="tabs"><tbody><tr role="tablist" id="native">
+          <td role="heading"><div class="nt" role="tab" aria-label="Primary" aria-selected="true"><i></i><div data-tooltip="Primary">Primary</div></div></td>
+          <td role="heading"><div class="nt" role="tab" aria-label="Promotions" aria-selected="false"><i></i><div data-tooltip="Promotions">Promotions</div></div></td>
+          <td role="heading"><div class="nt" role="tab" aria-label="Updates" aria-selected="false"><i></i><div data-tooltip="Updates">Updates</div></div></td>
+          <td role="heading"><div class="nt" role="tab" aria-label="Forums" aria-selected="false"><i></i><div data-tooltip="Forums">Forums</div></div></td>
+        </tr></tbody></table>
+        <div id="inbox-rows"></div>
+      </div>
+      <div id="search-view" hidden><div id="search-rows"></div></div>
+    </div>
+  </div>
+</div>
+<pre id="result"></pre>
+
+<script src="chrome-shim.js"></script>
+<script>
+  // Mock "Gmail": swap between inbox and search views on hash change, like the real thing.
+  const rows = {
+    inbox: [['Dana Whitfield', 'Lunch Thursday?', '9:41 AM'], ['GitHub', '[ttulttul/custom-gmail-tabs] CI passed', '9:12 AM'], ['Priya Raman', 'Re: Q4 planning doc', '8:30 AM'], ['Marco', 'Photos from the weekend', 'Nov 23']],
+    search: [['Acme Billing', 'Your receipt #4821', '7:02 AM'], ['Rail Co.', 'Order confirmation: 2 tickets', 'Nov 22'], ['Cloud Host', 'Invoice for November', 'Nov 20'], ['Bookshop', 'Your order has shipped', 'Nov 18']],
+  };
+  function fill(id, data) {
+    document.getElementById(id).innerHTML = data.map(([a, b, c]) => `<div class="row"><b>${a}</b><span>${b}</span><span>${c}</span></div>`).join('');
+  }
+  fill('inbox-rows', rows.inbox);
+  fill('search-rows', rows.search);
+  document.getElementById('native').addEventListener('click', (e) => {
+    const tab = e.target.closest('[role="tab"]');
+    if (!tab) return;
+    window.__nativeClicks = (window.__nativeClicks || 0) + 1;
+    document.querySelectorAll('#native [role="tab"]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+  });
+  function route() {
+    const search = location.hash.startsWith('#search/');
+    document.getElementById('inbox-view').hidden = search;
+    document.getElementById('search-view').hidden = !search;
+    document.getElementById('searchbox').textContent = search ? CGT.queryFromHash(location.hash) : 'Search mail';
+  }
+  window.addEventListener('hashchange', route);
+
+  __shim.areas.sync.tabs = [
+    { id: 'r', label: 'Receipts', query: 'in:inbox (receipt OR invoice OR "order confirmation")', color: '#188038' },
+    { id: 'n', label: 'Newsletters', query: 'in:inbox unsubscribe', color: '#e8710a' },
+  ];
+</script>
+<script src="../../src/shared/core.js"></script>
+<script>route();</script>
+<script src="../../src/content/content.js"></script>
+<script>
+  const mode = new URLSearchParams(location.search).get('mode') || 'test';
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const $$ = (s) => Array.from(document.querySelectorAll(s));
+  const results = [];
+  function check(name, cond, detail) { results.push({ name, ok: !!cond, detail: cond ? undefined : detail }); }
+  const warn = console.warn.bind(console);
+  console.warn = (...a) => { results.push({ name: 'console.warn', ok: false, detail: a.map(String).join(' ') }); warn(...a); };
+  window.addEventListener('error', (e) => results.push({ name: 'uncaught error', ok: false, detail: e.message + ' @' + e.lineno }));
+
+  async function run() {
+    if (location.hash) { history.replaceState(null, '', location.pathname + location.search); route(); }
+    await sleep(150);
+
+    if (mode === 'inbox') return;
+    if (mode === 'results') {
+      $$('.cgt-cell .cgt-tab')[0].click();
+      await sleep(150);
+      return;
+    }
+
+    // 1. Custom tabs appended after Gmail's own tabs, inside the tablist row.
+    const cells = $$('#native > td');
+    check('custom cells injected', $$('#native > .cgt-cell').length === 2, cells.map((c) => c.className));
+    check('custom cells come after native ones', cells[4] && cells[4].classList.contains('cgt-cell'), cells.length);
+    check('labels rendered', $$('#native .cgt-label').map((e) => e.textContent).join('|') === 'Receipts|Newsletters');
+    const table = document.querySelector('table.tabs');
+    check('tab bar fits its panel', table.offsetWidth <= table.parentElement.clientWidth + 1, [table.offsetWidth, table.parentElement.clientWidth]);
+    check('custom tab text uses unselected colour', getComputedStyle($$('#native .cgt-tab')[0]).color === getComputedStyle(document.querySelector('#native [aria-label="Updates"]')).color);
+    check('native labels remembered', JSON.stringify(__shim.areas.local.nativeTabs) === JSON.stringify(['Primary', 'Promotions', 'Updates', 'Forums']), __shim.areas.local.nativeTabs);
+
+    // 2. Clicking a custom tab opens its search, without Gmail's tablist handler firing.
+    $$('#native .cgt-tab')[0].click();
+    await sleep(150);
+    check('hash set to search', CGT.queryFromHash(location.hash) === 'in:inbox (receipt OR invoice OR "order confirmation")', location.hash);
+    check('click did not reach Gmail tablist handler', !window.__nativeClicks, window.__nativeClicks);
+
+    // 3. On results, our strip shows with the custom tab selected.
+    const strip = document.querySelector('[role="main"] > .cgt-strip');
+    check('strip shown on results', !!strip);
+    const stripTabs = strip ? Array.from(strip.querySelectorAll('.cgt-tab')) : [];
+    check('strip has native + custom', stripTabs.map((t) => t.textContent).join('|') === 'Primary|Promotions|Updates|Forums|Receipts|Newsletters', stripTabs.map((t) => t.textContent));
+    check('custom tab selected in strip', stripTabs[4] && stripTabs[4].getAttribute('aria-selected') === 'true');
+
+    // 4. Switching between custom tabs via the strip.
+    stripTabs[5].click();
+    await sleep(150);
+    check('second custom tab opens', CGT.queryFromHash(location.hash) === 'in:inbox unsubscribe', location.hash);
+    const sel = document.querySelector('.cgt-strip .cgt-tab[aria-selected="true"]');
+    check('strip selection follows', sel && sel.textContent === 'Newsletters', sel && sel.textContent);
+
+    // 5. Going back to a Gmail category from the strip clicks the real tab.
+    Array.from(document.querySelectorAll('.cgt-strip .cgt-tab'))[1].click();
+    await sleep(250);
+    check('back to inbox', location.hash === '#inbox', location.hash);
+    check('strip removed on inbox', !document.querySelector('.cgt-strip'));
+    check('Promotions selected', document.querySelector('#native [aria-label="Promotions"]').getAttribute('aria-selected') === 'true');
+
+    // 6. Editing tabs in storage updates Gmail live.
+    await chrome.storage.sync.set({ tabs: [...__shim.areas.sync.tabs, { id: 'x', label: 'Starred', query: 'is:starred', color: '#f9ab00' }] });
+    await sleep(150);
+    check('storage change re-renders', $$('#native > .cgt-cell').length === 3);
+
+    // 7. Gmail re-rendering its tab bar does not lose our tabs.
+    const nativeRow = document.getElementById('native');
+    $$('#native > .cgt-cell').forEach((c) => c.remove());
+    await sleep(150);
+    check('re-injected after removal', $$('#native > .cgt-cell').length === 3 && nativeRow.lastElementChild.classList.contains('cgt-cell'));
+
+    // 8. Thread view under a custom search hides the strip.
+    location.hash = CGT.searchHash('is:starred') + '/FMfcgzQXJ';
+    await sleep(150);
+    check('no strip on thread view', !document.querySelector('.cgt-strip'));
+
+    // 9. Disabling the strip setting.
+    await chrome.storage.sync.set({ settings: { showStripOnResults: false } });
+    location.hash = CGT.searchHash('is:starred');
+    await sleep(150);
+    check('strip respects setting', !document.querySelector('.cgt-strip'));
+
+    // 10. Popup message opens a tab.
+    let reply;
+    __shim.listeners.message[0]({ type: 'cgt:open', id: 'n' }, {}, (r) => (reply = r));
+    await sleep(50);
+    check('message opens tab', reply && reply.ok && CGT.queryFromHash(location.hash) === 'in:inbox unsubscribe', location.hash);
+  }
+
+  run().catch((e) => results.push({ name: 'exception', ok: false, detail: String(e && e.stack || e) }))
+    .finally(() => {
+      document.getElementById('result').textContent = JSON.stringify(results);
+      document.title = 'done';
+    });
+</script>
+</body>
+</html>

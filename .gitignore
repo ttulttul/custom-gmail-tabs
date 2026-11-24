@@ -1,0 +1,4 @@
+node_modules/
+dist/
+test/fixture/.demo/
+.DS_Store

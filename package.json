@@ -1,0 +1,14 @@
+{
+  "name": "custom-gmail-tabs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Chrome extension that adds search-backed custom tabs to Gmail's inbox tab bar.",
+  "license": "MIT",
+  "scripts": {
+    "test": "node --test \"test/**/*.test.js\"",
+    "check": "node scripts/check.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "screenshots": "node scripts/screenshots.mjs",
+    "zip": "rm -f dist/custom-gmail-tabs.zip && mkdir -p dist && zip -r dist/custom-gmail-tabs.zip manifest.json src icons LICENSE"
+  }
+}
