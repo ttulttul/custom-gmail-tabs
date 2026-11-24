@@ -267,6 +267,113 @@
     return strips.length > 0;
   }
 
+  /** The child of `main` holding Gmail's toolbar (checkbox, refresh…), if it lives inside main. */
+  function toolbarChild(main) {
+    const tb = Array.from(main.querySelectorAll('[gh="mtb"]')).find(isVisible);
+    if (!tb) return null;
+    let c = tb;
+    while (c.parentElement !== main) c = c.parentElement;
+    return c;
+  }
+
+  /** Put the strip where Gmail's tab bar sits on the inbox: just under the toolbar. */
+  function placeStrip(main, strip) {
+    const tb = toolbarChild(main);
+    if (tb) tb.after(strip);
+    else main.prepend(strip);
+  }
+
+  function stripInPlace(main, strip) {
+    if (!strip || strip.parentElement !== main) return false;
+    const tb = toolbarChild(main);
+    return tb ? tb.nextElementSibling === strip : main.firstElementChild === strip;
+  }
+
+  // ---------- Keep the inbox layout on custom tab results ----------
+  //
+  // A custom tab is a Gmail search, and Gmail decorates search results with
+  // extra chrome (Mail/Conversations/Spaces, filter chips) and puts the query
+  // in the search box. To make the custom tab feel like a real inbox tab we
+  // hide that chrome and clear the box. Search-only chrome is found by
+  // comparison: elements laid out above the results that were not visible on
+  // the inbox. No Gmail class names are involved.
+
+  const hiddenChrome = new Set();
+  let baseline = new WeakSet(); // Layout elements visible on the inbox.
+  let baselineTaken = false;
+  let baselineAt = 0;
+
+  function layoutSiblings(main) {
+    const out = [];
+    for (let a = main; a && a.parentElement && a !== document.body; a = a.parentElement) {
+      for (const c of a.parentElement.children) if (c !== a) out.push(c);
+    }
+    return out;
+  }
+
+  function recordBaseline(main) {
+    if (!main || Date.now() - baselineAt < 1000) return;
+    baselineAt = Date.now();
+    for (const c of layoutSiblings(main)) if (!hiddenChrome.has(c) && isVisible(c)) baseline.add(c);
+    baselineTaken = true;
+  }
+
+  function searchField() {
+    return document.querySelector('input[name="q"], [role="search"] input, form[role="search"] input');
+  }
+
+  function hideSearchChrome(main) {
+    const field = searchField();
+    const fieldBottom = field && isVisible(field) ? field.getBoundingClientRect().bottom : null;
+    // Without a look at the inbox first, only trust the area below the search box.
+    if (!baselineTaken && fieldBottom == null) return false;
+    const m = main.getBoundingClientRect();
+    const found = [];
+    for (const c of layoutSiblings(main)) {
+      if (hiddenChrome.has(c) || c.hasAttribute('data-cgt') || /^(SCRIPT|STYLE|LINK)$/.test(c.tagName)) continue;
+      if (baselineTaken && baseline.has(c)) continue;
+      if (!isVisible(c)) continue;
+      const r = c.getBoundingClientRect();
+      if (r.height === 0 || r.height > 200) continue; // a row of chrome, not a pane
+      if (r.bottom > m.top + 1) continue; // must sit above the results
+      if (r.right <= m.left || r.left >= m.right) continue; // and over them, not beside
+      if (fieldBottom != null && r.top < fieldBottom) continue; // never the header
+      if (field && c.contains(field)) continue;
+      if (c.matches('[gh="mtb"]') || c.querySelector('[gh="mtb"], [role="checkbox"]')) continue; // the toolbar stays
+      found.push(c);
+    }
+    for (const c of found) {
+      c.classList.add('cgt-hide');
+      hiddenChrome.add(c);
+    }
+    return found.length > 0;
+  }
+
+  function showSearchChrome() {
+    if (!hiddenChrome.size) return false;
+    for (const c of hiddenChrome) c.classList.remove('cgt-hide');
+    hiddenChrome.clear();
+    return true;
+  }
+
+  /** Empty the search box while it just echoes the custom tab's query. */
+  function clearSearchBox(active) {
+    const want = C.normalizeQuery(active.query);
+    for (const el of document.querySelectorAll('input, textarea')) {
+      if (el === document.activeElement || el.closest('[data-cgt]')) continue;
+      if (el.tagName === 'INPUT' && !/^(text|search)$/i.test(el.type)) continue;
+      if (el.value && C.normalizeQuery(el.value) === want) el.value = '';
+    }
+  }
+
+  // Gmail fills the search box a moment after navigation, without DOM
+  // mutations we'd see, so look again a few times after each hash change.
+  let retryTimers = [];
+  function scheduleSettle(delays = [60, 250, 800, 2000]) {
+    retryTimers.forEach(clearTimeout);
+    retryTimers = delays.map((ms) => setTimeout(schedule, ms));
+  }
+
   // ---------- Surface 2a: a live copy of Gmail's (hidden) tab bar ----------
   //
   // On search results Gmail hides the inbox view but keeps its tab bar in the
@@ -325,13 +432,20 @@
     const native = nativeTabsIn(src);
     const selIndex = native.findIndex((t) => t.getAttribute('aria-selected') === 'true');
     const sig = C.signature(tabs, JSON.stringify(['mirror', activeId, selIndex, src.textContent]));
-    const current = main.querySelector(':scope > .cgt-strip');
-    if (current && current.getAttribute('data-cgt-sig') === sig && main.firstElementChild === current) return false;
+    const current = document.querySelector('.cgt-strip');
+    if (current && current.getAttribute('data-cgt-sig') === sig && stripInPlace(main, current)) return false;
 
-    const sourceRoot = src.closest('table') || src;
+    // Include single-child wrappers: Gmail styles badges and sender previews
+    // through ancestor classes, so the bare table would lose them.
+    let sourceRoot = src.closest('table') || src;
+    for (let i = 0; i < 3; i++) {
+      const p = sourceRoot.parentElement;
+      if (!p || p.children.length !== 1 || p.matches('[role="main"]') || p.contains(main)) break;
+      sourceRoot = p;
+    }
     const clone = sourceRoot.cloneNode(true);
     for (const n of clone.querySelectorAll('[data-cgt]')) n.remove();
-    clone.classList.remove('cgt-fit');
+    for (const n of [clone, ...clone.querySelectorAll('.cgt-fit')]) n.classList.remove('cgt-fit');
     scrub(clone);
     const list = clone.matches('[role="tablist"]') ? clone : clone.querySelector('[role="tablist"]');
     const cloneTabs = list ? nativeTabsIn(list) : [];
@@ -368,7 +482,7 @@
     strip.setAttribute('data-cgt', 'strip');
     strip.setAttribute('data-cgt-sig', sig);
     strip.appendChild(clone);
-    main.prepend(strip);
+    placeStrip(main, strip);
 
     if (!isVisible(list) || list.getBoundingClientRect().height < 10) {
       strip.remove();
@@ -398,8 +512,8 @@
   function renderStrip(main, activeId, inboxActive) {
     const labels = nativeLabels.length ? nativeLabels : ['Inbox'];
     const sig = C.signature(tabs, JSON.stringify([labels, activeId, inboxActive]));
-    const current = main.querySelector(':scope > .cgt-strip');
-    if (current && current.getAttribute('data-cgt-sig') === sig && main.firstElementChild === current) return false;
+    const current = document.querySelector('.cgt-strip');
+    if (current && current.getAttribute('data-cgt-sig') === sig && stripInPlace(main, current)) return false;
     removeStrip();
 
     const strip = document.createElement('div');
@@ -426,7 +540,7 @@
     for (const t of tabs) list.appendChild(customTab(t, t.id === activeId));
 
     strip.appendChild(list);
-    main.prepend(strip);
+    placeStrip(main, strip);
     return true;
   }
 
@@ -439,6 +553,8 @@
 
     if (list) {
       let wrote = removeStrip();
+      wrote = showSearchChrome() || wrote;
+      recordBaseline(visibleMain());
       wrote = injectIntoTablist(list) || wrote;
       if (pendingNative) {
         const native = nativeTabsIn(list);
@@ -461,11 +577,16 @@
     const bareInbox = C.isInboxHash(hash) && nativeLabels.length <= 1 && !pendingNative;
 
     if (main && tabs.length && settings.showStripOnResults && (onResults || bareInbox)) {
+      if (onResults) {
+        wrote = hideSearchChrome(main) || wrote;
+        clearSearchBox(active);
+      }
       const mirrored = active ? renderMirror(main, active.id) : null;
       if (mirrored === null) wrote = renderStrip(main, active ? active.id : null, !active) || wrote;
       else wrote = mirrored || wrote;
     } else {
       wrote = removeStrip() || wrote;
+      wrote = showSearchChrome() || wrote;
     }
     return wrote;
   }
@@ -534,7 +655,10 @@
       sendResponse({ ok: !!t });
     });
 
-    window.addEventListener('hashchange', schedule);
+    window.addEventListener('hashchange', () => {
+      schedule();
+      scheduleSettle();
+    });
     let resizeTimer = 0;
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimer);
@@ -542,6 +666,8 @@
     });
     new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
     schedule();
+    // Gmail's first load is slow; keep checking the search box for a while.
+    scheduleSettle([60, 250, 800, 2000, 4000, 8000]);
   }
 
   init();

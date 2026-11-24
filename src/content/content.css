@@ -134,3 +134,8 @@ table.cgt-fit [role="tab"] {
 .cgt-mirror [role="tab"] {
   cursor: pointer;
 }
+
+/* Gmail search-only chrome hidden while a custom tab is open. */
+.cgt-hide {
+  display: none !important;
+}

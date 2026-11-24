@@ -30,7 +30,14 @@
   .nt.sel { color: #0b57d0; }
   .nt.sel::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 3px; background: #0b57d0; border-radius: 3px 3px 0 0; }
   .nt i { width: 20px; height: 20px; border-radius: 4px; background: currentColor; opacity: .7; }
-  .nt .badge { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #188038; color: #fff; font-size: 12px; }
+  /* Badges only show through an ancestor class, as in Gmail. */
+  .nt .badge { display: none; margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #188038; color: #fff; font-size: 12px; }
+  .tabwrap .nt .badge { display: inline-block; }
+  .search input { all: unset; flex: 1; font-size: 16px; color: #1f1f1f; }
+  .search input::placeholder { color: #444746; }
+  .chips { display: flex; gap: 8px; align-items: center; padding: 10px 16px; }
+  .chips[hidden] { display: none; }
+  .chips span { border: 1px solid #747775; border-radius: 8px; padding: 5px 12px; color: #444746; }
   .decoy { display: flex; gap: 8px; margin-left: auto; color: #444746; }
   .row { display: grid; grid-template-columns: 200px 1fr 80px; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #f1f3f4; }
   .row b { font-weight: 700; }
@@ -40,19 +47,21 @@
 </head>
 <body>
 <div class="app">
-  <div class="top"><div class="logo">Mock Gmail</div><div class="search" id="searchbox">Search mail</div>
+  <div class="top"><div class="logo">Mock Gmail</div><div class="search"><form role="search"><input name="q" id="searchbox" placeholder="Search mail" autocomplete="off" /></form></div>
     <div class="decoy" role="tablist"><div role="tab" aria-selected="true">Mail</div><div role="tab">Spaces</div></div></div>
   <nav><div class="on">Inbox</div><div>Starred</div><div>Snoozed</div><div>Sent</div><div>Drafts</div></nav>
   <div class="panel">
-    <div class="toolbar" gh="mtb">☐ ⟳ ⋮</div>
+    <!-- Search-only chrome, shown by "Gmail" on search results. -->
+    <div class="chips" id="chips" hidden><span>Mail</span><span>Conversations</span><span>Spaces</span><span>From ▾</span><span>Any time ▾</span><span>Has attachment</span></div>
+    <div class="toolbar" gh="mtb"><span role="checkbox">☐</span> ⟳ ⋮</div>
     <div role="main">
       <div id="inbox-view">
-        <table class="tabs"><tbody><tr role="tablist" id="native">
+        <div class="tabwrap"><table class="tabs"><tbody><tr role="tablist" id="native">
           <td role="heading"><div class="nt sel" role="tab" id="t-primary" jsaction="click:tab" aria-label="Primary" aria-selected="true"><i></i><div data-tooltip="Primary">Primary</div></div></td>
           <td role="heading"><div class="nt" role="tab" id="t-promos" jsaction="click:tab" aria-label="Promotions" aria-selected="false"><i></i><div data-tooltip="Promotions">Promotions<span class="badge" id="promo-badge">2 new</span></div></div></td>
           <td role="heading"><div class="nt" role="tab" aria-label="Updates" aria-selected="false"><i></i><div data-tooltip="Updates">Updates</div></div></td>
           <td role="heading"><div class="nt" role="tab" aria-label="Forums" aria-selected="false"><i></i><div data-tooltip="Forums">Forums</div></div></td>
-        </tr></tbody></table>
+        </tr></tbody></table></div>
         <div id="inbox-rows"></div>
       </div>
       <div id="search-view" hidden><div id="search-rows"></div></div>
@@ -86,7 +95,11 @@
     const search = location.hash.startsWith('#search/');
     document.getElementById('inbox-view').hidden = search;
     document.getElementById('search-view').hidden = !search;
-    document.getElementById('searchbox').textContent = search ? CGT.queryFromHash(location.hash) : 'Search mail';
+    document.getElementById('chips').hidden = !search;
+    // Like Gmail, fill the search box a moment later (no DOM mutation to observe).
+    setTimeout(() => {
+      document.getElementById('searchbox').value = search ? CGT.queryFromHash(location.hash).split('/')[0] : '';
+    }, 30);
   }
   window.addEventListener('hashchange', route);
 
@@ -109,6 +122,16 @@
   window.addEventListener('error', (e) => results.push({ name: 'uncaught error', ok: false, detail: e.message + ' @' + e.lineno }));
 
   async function run() {
+    if (mode === 'direct') {
+      // Opened straight onto a custom tab's results: no inbox seen yet.
+      await sleep(300);
+      const chips = document.getElementById('chips');
+      check('direct: search-only chrome hidden', chips.classList.contains('cgt-hide') && !chips.getClientRects().length);
+      check('direct: search box cleared', document.getElementById('searchbox').value === '', document.getElementById('searchbox').value);
+      check('direct: tab bar shown', !!document.querySelector('.cgt-strip'));
+      check('direct: header and toolbar untouched', !document.querySelector('.top.cgt-hide, nav.cgt-hide, [gh="mtb"].cgt-hide'));
+      return;
+    }
     if (location.hash) { history.replaceState(null, '', location.pathname + location.search); route(); }
     await sleep(150);
 
@@ -129,6 +152,11 @@
     check('custom tab text uses unselected colour', getComputedStyle($$('#native .cgt-tab')[0]).color === getComputedStyle(document.querySelector('#native [aria-label="Updates"]')).color);
     check('native labels remembered', JSON.stringify(__shim.areas.local.nativeTabs) === JSON.stringify(['Primary', 'Promotions', 'Updates', 'Forums']), __shim.areas.local.nativeTabs);
 
+    // Inbox geometry, to check the custom tab keeps the same layout.
+    const top = (el) => Math.round(el.getBoundingClientRect().top);
+    const inboxBarTop = top(document.querySelector('.tabwrap'));
+    const inboxListTop = top(document.getElementById('inbox-rows'));
+
     // 2. Clicking a custom tab opens its search, without Gmail's tablist handler firing.
     $$('#native .cgt-tab')[0].click();
     await sleep(150);
@@ -147,7 +175,24 @@
     check('Gmail selected styling cleared on copy', copyPrimary && !copyPrimary.classList.contains('sel') && copyPrimary.getAttribute('aria-selected') === 'false', copyPrimary && copyPrimary.className);
     check('copy keeps Gmail classes', copyPrimary && copyPrimary.classList.contains('nt'));
     check('copy has no ids or jsaction', strip && !strip.querySelector('[id], [jsaction]'));
-    check('copy shows Gmail badges', strip && strip.textContent.includes('2 new'));
+    const copyBadge = strip && strip.querySelector('.badge');
+    check('copy shows Gmail badges', copyBadge && copyBadge.textContent === '2 new' && copyBadge.getClientRects().length > 0);
+
+    // Same layout as the inbox: no search chrome, empty search box, bar and list where they were.
+    const chips = document.getElementById('chips');
+    check('search-only chrome hidden', chips.classList.contains('cgt-hide') && !chips.getClientRects().length);
+    check('toolbar still shown', document.querySelector('[gh="mtb"]').getClientRects().length > 0 && !document.querySelector('[gh="mtb"]').classList.contains('cgt-hide'));
+    check('search box cleared', document.getElementById('searchbox').value === '', document.getElementById('searchbox').value);
+    check('tab bar at same height as on inbox', Math.abs(top(strip) - inboxBarTop) <= 1, [top(strip), inboxBarTop]);
+    check('results start where inbox list did', Math.abs(top(document.getElementById('search-rows')) - inboxListTop) <= 1, [top(document.getElementById('search-rows')), inboxListTop]);
+    check('header untouched', !document.querySelector('.top.cgt-hide, nav.cgt-hide, .decoy.cgt-hide'));
+
+    // A search the user types is left alone.
+    document.getElementById('searchbox').value = 'from:me';
+    document.body.appendChild(document.createElement('div'));
+    await sleep(100);
+    check('typed search not cleared', document.getElementById('searchbox').value === 'from:me');
+    document.getElementById('searchbox').value = '';
     check('real tab bar untouched', document.querySelector('#t-primary').classList.contains('sel') && !document.querySelector('#native .cgt-cell'));
 
     // Badge changes in Gmail's hidden bar flow into the copy.
@@ -168,6 +213,7 @@
     await sleep(250);
     check('back to inbox', location.hash === '#inbox', location.hash);
     check('strip removed on inbox', !document.querySelector('.cgt-strip'));
+    check('search chrome restored', !document.querySelector('.cgt-hide'));
     const promos = document.querySelector('#native [aria-label="Promotions"]');
     check('Promotions selected', promos.getAttribute('aria-selected') === 'true' && promos.classList.contains('sel'));
     check('custom tabs back in real bar', $$('#native > .cgt-cell').length === 2);
