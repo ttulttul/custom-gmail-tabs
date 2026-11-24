@@ -53,9 +53,14 @@ new tab if you're not on Gmail.
   searches, so the browser's back and forward buttons behave normally.
 - A `MutationObserver` re-adds the tabs whenever Gmail redraws its bar. Rendering happens in a
   microtask, before the browser paints, so the tabs don't flicker.
-- On a custom tab's results, Gmail shows no tab bar, so the script puts its own bar at the top of
-  the main panel. It remembers the names of your Gmail categories from the last time it saw the
-  inbox. Picking a category there goes back to `#inbox` and clicks the real Gmail tab.
+- On a custom tab's results, Gmail hides its tab bar but keeps it in the page. The script copies
+  that bar, with its real icons, "N new" badges and previews, and puts the copy where the bar sits
+  on the inbox. It clears Gmail's selected styling from the copy and selects your tab instead.
+  Picking a category there goes back to `#inbox` and clicks the real Gmail tab.
+- To keep the layout the same as the inbox, the script hides Gmail's search-only rows above the
+  results (Mail / Conversations / Spaces, filter chips) and empties the search box while it shows
+  the tab's query. It finds those rows by comparison: they are rows above the results that weren't
+  visible on the inbox. Anything you type into the search box is left alone.
 - If Gmail's fixed-width tab cells would overflow the panel, the bar switches to equal-width
   columns.
 - The only permission is `storage`. The extension doesn't read message contents and makes no

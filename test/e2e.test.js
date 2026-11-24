@@ -22,9 +22,10 @@ function findChrome() {
 }
 
 const chrome = findChrome();
+const skip = !chrome && 'no Chrome found';
 
-test('content script works against a mock Gmail DOM', { skip: !chrome && 'no Chrome found' }, () => {
-  const url = pathToFileURL(path.join(__dirname, 'fixture', 'gmail-mock.html')).href + '?mode=test';
+function runFixture(query) {
+  const url = pathToFileURL(path.join(__dirname, 'fixture', 'gmail-mock.html')).href + query;
   const html = execFileSync(
     chrome,
     [
@@ -43,8 +44,19 @@ test('content script works against a mock Gmail DOM', { skip: !chrome && 'no Chr
   const m = /<pre id="result">([\s\S]*?)<\/pre>/.exec(html);
   assert.ok(m && m[1], 'fixture produced no result');
   const decoded = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-  const results = JSON.parse(decoded);
+  return JSON.parse(decoded);
+}
+
+function assertAllPass(results, min) {
   const failed = results.filter((r) => !r.ok);
-  assert.ok(results.length >= 29, `expected all checks to run, got ${results.length}`);
+  assert.ok(results.length >= min, `expected all checks to run, got ${results.length}`);
   assert.deepEqual(failed, [], 'failed checks:\n' + JSON.stringify(failed, null, 2));
+}
+
+test('content script works against a mock Gmail DOM', { skip }, () => {
+  assertAllPass(runFixture('?mode=test'), 38);
+});
+
+test('opening Gmail directly on a custom tab keeps the inbox layout', { skip }, () => {
+  assertAllPass(runFixture('?mode=direct#search/in%3Ainbox+unsubscribe'), 4);
 });
