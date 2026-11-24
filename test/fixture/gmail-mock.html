@@ -26,9 +26,12 @@
   table.tabs { width: 100%; border-collapse: collapse; table-layout: fixed; border-bottom: 1px solid rgba(100,121,143,.12); }
   table.tabs td { width: 255px; }
   [role="tab"].nt { display: flex; align-items: center; gap: 16px; height: 56px; padding: 0 16px; color: #444746; font: 500 14px "Google Sans", Arial; cursor: pointer; position: relative; }
-  [role="tab"].nt[aria-selected="true"] { color: #0b57d0; }
-  [role="tab"].nt[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 3px; background: #0b57d0; border-radius: 3px 3px 0 0; }
+  /* Like Gmail, "selected" is an obfuscated class, not just aria-selected. */
+  .nt.sel { color: #0b57d0; }
+  .nt.sel::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: 0; height: 3px; background: #0b57d0; border-radius: 3px 3px 0 0; }
   .nt i { width: 20px; height: 20px; border-radius: 4px; background: currentColor; opacity: .7; }
+  .nt .badge { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: #188038; color: #fff; font-size: 12px; }
+  .decoy { display: flex; gap: 8px; margin-left: auto; color: #444746; }
   .row { display: grid; grid-template-columns: 200px 1fr 80px; gap: 16px; padding: 10px 16px; border-bottom: 1px solid #f1f3f4; }
   .row b { font-weight: 700; }
   .row span:last-child { text-align: right; color: #5f6368; font-size: 12px; }
@@ -37,15 +40,16 @@
 </head>
 <body>
 <div class="app">
-  <div class="top"><div class="logo">Mock Gmail</div><div class="search" id="searchbox">Search mail</div></div>
+  <div class="top"><div class="logo">Mock Gmail</div><div class="search" id="searchbox">Search mail</div>
+    <div class="decoy" role="tablist"><div role="tab" aria-selected="true">Mail</div><div role="tab">Spaces</div></div></div>
   <nav><div class="on">Inbox</div><div>Starred</div><div>Snoozed</div><div>Sent</div><div>Drafts</div></nav>
   <div class="panel">
     <div class="toolbar" gh="mtb">☐ ⟳ ⋮</div>
     <div role="main">
       <div id="inbox-view">
         <table class="tabs"><tbody><tr role="tablist" id="native">
-          <td role="heading"><div class="nt" role="tab" aria-label="Primary" aria-selected="true"><i></i><div data-tooltip="Primary">Primary</div></div></td>
-          <td role="heading"><div class="nt" role="tab" aria-label="Promotions" aria-selected="false"><i></i><div data-tooltip="Promotions">Promotions</div></div></td>
+          <td role="heading"><div class="nt sel" role="tab" id="t-primary" jsaction="click:tab" aria-label="Primary" aria-selected="true"><i></i><div data-tooltip="Primary">Primary</div></div></td>
+          <td role="heading"><div class="nt" role="tab" id="t-promos" jsaction="click:tab" aria-label="Promotions" aria-selected="false"><i></i><div data-tooltip="Promotions">Promotions<span class="badge" id="promo-badge">2 new</span></div></div></td>
           <td role="heading"><div class="nt" role="tab" aria-label="Updates" aria-selected="false"><i></i><div data-tooltip="Updates">Updates</div></div></td>
           <td role="heading"><div class="nt" role="tab" aria-label="Forums" aria-selected="false"><i></i><div data-tooltip="Forums">Forums</div></div></td>
         </tr></tbody></table>
@@ -73,7 +77,10 @@
     const tab = e.target.closest('[role="tab"]');
     if (!tab) return;
     window.__nativeClicks = (window.__nativeClicks || 0) + 1;
-    document.querySelectorAll('#native [role="tab"]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+    document.querySelectorAll('#native [role="tab"]').forEach((t) => {
+      t.setAttribute('aria-selected', String(t === tab));
+      t.classList.toggle('sel', t === tab);
+    });
   });
   function route() {
     const search = location.hash.startsWith('#search/');
@@ -128,26 +135,43 @@
     check('hash set to search', CGT.queryFromHash(location.hash) === 'in:inbox (receipt OR invoice OR "order confirmation")', location.hash);
     check('click did not reach Gmail tablist handler', !window.__nativeClicks, window.__nativeClicks);
 
-    // 3. On results, our strip shows with the custom tab selected.
+    // 3. On results, a live copy of Gmail's tab bar shows, with the custom tab selected.
     const strip = document.querySelector('[role="main"] > .cgt-strip');
     check('strip shown on results', !!strip);
-    const stripTabs = strip ? Array.from(strip.querySelectorAll('.cgt-tab')) : [];
-    check('strip has native + custom', stripTabs.map((t) => t.textContent).join('|') === 'Primary|Promotions|Updates|Forums|Receipts|Newsletters', stripTabs.map((t) => t.textContent));
-    check('custom tab selected in strip', stripTabs[4] && stripTabs[4].getAttribute('aria-selected') === 'true');
+    check("strip is a copy of Gmail's bar", strip && strip.classList.contains('cgt-mirror') && !!strip.querySelector('table.tabs'));
+    const label = (t) => t.getAttribute('aria-label') || t.textContent;
+    const stripTabs = () => Array.from(document.querySelectorAll('.cgt-strip [role="tab"]'));
+    check('strip has native + custom', stripTabs().map(label).join('|') === 'Primary|Promotions|Updates|Forums|Receipts|Newsletters', stripTabs().map(label));
+    check('custom tab selected in strip', stripTabs()[4] && stripTabs()[4].getAttribute('aria-selected') === 'true');
+    const copyPrimary = stripTabs()[0];
+    check('Gmail selected styling cleared on copy', copyPrimary && !copyPrimary.classList.contains('sel') && copyPrimary.getAttribute('aria-selected') === 'false', copyPrimary && copyPrimary.className);
+    check('copy keeps Gmail classes', copyPrimary && copyPrimary.classList.contains('nt'));
+    check('copy has no ids or jsaction', strip && !strip.querySelector('[id], [jsaction]'));
+    check('copy shows Gmail badges', strip && strip.textContent.includes('2 new'));
+    check('real tab bar untouched', document.querySelector('#t-primary').classList.contains('sel') && !document.querySelector('#native .cgt-cell'));
+
+    // Badge changes in Gmail's hidden bar flow into the copy.
+    document.getElementById('promo-badge').textContent = '5 new';
+    await sleep(150);
+    const strip2 = document.querySelector('.cgt-strip');
+    check('copy follows live badge counts', strip2 && strip2.textContent.includes('5 new'));
 
     // 4. Switching between custom tabs via the strip.
-    stripTabs[5].click();
+    stripTabs()[5].click();
     await sleep(150);
     check('second custom tab opens', CGT.queryFromHash(location.hash) === 'in:inbox unsubscribe', location.hash);
-    const sel = document.querySelector('.cgt-strip .cgt-tab[aria-selected="true"]');
+    const sel = document.querySelector('.cgt-strip [role="tab"][aria-selected="true"]');
     check('strip selection follows', sel && sel.textContent === 'Newsletters', sel && sel.textContent);
 
     // 5. Going back to a Gmail category from the strip clicks the real tab.
-    Array.from(document.querySelectorAll('.cgt-strip .cgt-tab'))[1].click();
+    stripTabs()[1].click();
     await sleep(250);
     check('back to inbox', location.hash === '#inbox', location.hash);
     check('strip removed on inbox', !document.querySelector('.cgt-strip'));
-    check('Promotions selected', document.querySelector('#native [aria-label="Promotions"]').getAttribute('aria-selected') === 'true');
+    const promos = document.querySelector('#native [aria-label="Promotions"]');
+    check('Promotions selected', promos.getAttribute('aria-selected') === 'true' && promos.classList.contains('sel'));
+    check('custom tabs back in real bar', $$('#native > .cgt-cell').length === 2);
+    check('decoy tablist untouched', !document.querySelector('.decoy .cgt-cell'));
 
     // 6. Editing tabs in storage updates Gmail live.
     await chrome.storage.sync.set({ tabs: [...__shim.areas.sync.tabs, { id: 'x', label: 'Starred', query: 'is:starred', color: '#f9ab00' }] });

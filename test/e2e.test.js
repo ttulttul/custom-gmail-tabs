@@ -45,6 +45,6 @@ test('content script works against a mock Gmail DOM', { skip: !chrome && 'no Chr
   const decoded = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
   const results = JSON.parse(decoded);
   const failed = results.filter((r) => !r.ok);
-  assert.ok(results.length >= 17, `expected all checks to run, got ${results.length}`);
+  assert.ok(results.length >= 29, `expected all checks to run, got ${results.length}`);
   assert.deepEqual(failed, [], 'failed checks:\n' + JSON.stringify(failed, null, 2));
 });
