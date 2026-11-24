@@ -117,3 +117,20 @@ table.cgt-fit [role="tab"] {
 .cgt-strip .cgt-tab:not([style*="--cgt-color"]).cgt-active {
   color: #0b57d0;
 }
+
+/* Cloned Gmail tab bar: keep Gmail's own look, only reset what .cgt-strip adds. */
+.cgt-strip.cgt-mirror {
+  color: inherit;
+  border-bottom: 0;
+  overflow: visible;
+}
+
+.cgt-strip.cgt-mirror .cgt-tab {
+  flex: initial;
+  min-width: 0;
+  height: var(--cgt-height, 48px);
+}
+
+.cgt-mirror [role="tab"] {
+  cursor: pointer;
+}

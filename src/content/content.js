@@ -248,10 +248,14 @@
   }
 
   function cleanTablists() {
-    const cells = document.querySelectorAll('.cgt-cell[data-cgt]');
+    // Only Gmail's own bar; the cloned bar in our strip manages itself.
+    const outside = (el) => !el.closest('.cgt-strip');
+    const cells = Array.from(document.querySelectorAll('.cgt-cell[data-cgt]')).filter(outside);
     for (const c of cells) c.remove();
     for (const l of document.querySelectorAll('[role="tablist"][data-cgt-sig]')) l.removeAttribute('data-cgt-sig');
-    if (cells.length) for (const t of document.querySelectorAll('.cgt-fit')) t.classList.remove('cgt-fit');
+    if (cells.length) {
+      for (const t of document.querySelectorAll('.cgt-fit')) if (outside(t)) t.classList.remove('cgt-fit');
+    }
     return cells.length > 0;
   }
 
@@ -262,6 +266,134 @@
     for (const s of strips) s.remove();
     return strips.length > 0;
   }
+
+  // ---------- Surface 2a: a live copy of Gmail's (hidden) tab bar ----------
+  //
+  // On search results Gmail hides the inbox view but keeps its tab bar in the
+  // DOM, with up-to-date icons, "N new" badges and sender previews. Cloning it
+  // gives a bar that looks exactly like the real one; we only clear Gmail's
+  // "selected" styling from it and append our tabs.
+
+  const SCRUB_ATTR = /^(id|js[a-z]*|tabindex|aria-(controls|owns|labelledby|describedby))$/i;
+  let mirrorBroken = false; // Clone turned out invisible (Gmail CSS changed?) — use the drawn strip.
+
+  /** Gmail's tab bar wherever it is (usually hidden), matched by its remembered labels. */
+  function findHiddenNativeTablist() {
+    if (!nativeLabels.length) return null;
+    const want = nativeLabels.join('\n');
+    for (const list of document.querySelectorAll('[role="tablist"]')) {
+      if (list.closest('[data-cgt]')) continue;
+      if (nativeTabsIn(list).map(nativeLabel).join('\n') === want) return list;
+    }
+    return null;
+  }
+
+  /** [tab, its parent, ..., its cell] — the elements between a tab and the tablist. */
+  function chainTo(el, list) {
+    const out = [];
+    for (let e = el; e && e !== list; e = e.parentElement) out.push(e);
+    return out;
+  }
+
+  /**
+   * Classes that only the selected tab (or its wrappers) carries, by depth.
+   * Gmail marks the selected tab with obfuscated classes; diffing against the
+   * unselected tabs finds them without hard-coding names.
+   */
+  function selectionClasses(native, list) {
+    const sel = native.find((t) => t.getAttribute('aria-selected') === 'true');
+    if (!sel) return [];
+    const others = native.filter((t) => t !== sel).map((t) => chainTo(t, list));
+    return chainTo(sel, list).map((el, depth) => {
+      const seen = new Set();
+      for (const chain of others) if (chain[depth]) chain[depth].classList.forEach((c) => seen.add(c));
+      return Array.from(el.classList).filter((c) => !seen.has(c));
+    });
+  }
+
+  function scrub(root) {
+    for (const el of [root, ...root.querySelectorAll('*')]) {
+      for (const a of Array.from(el.attributes)) if (SCRUB_ATTR.test(a.name)) el.removeAttribute(a.name);
+    }
+  }
+
+  /** Returns true/false (wrote or not), or null when mirroring isn't possible. */
+  function renderMirror(main, activeId) {
+    if (mirrorBroken) return null;
+    const src = findHiddenNativeTablist();
+    if (!src) return null;
+    const native = nativeTabsIn(src);
+    const selIndex = native.findIndex((t) => t.getAttribute('aria-selected') === 'true');
+    const sig = C.signature(tabs, JSON.stringify(['mirror', activeId, selIndex, src.textContent]));
+    const current = main.querySelector(':scope > .cgt-strip');
+    if (current && current.getAttribute('data-cgt-sig') === sig && main.firstElementChild === current) return false;
+
+    const sourceRoot = src.closest('table') || src;
+    const clone = sourceRoot.cloneNode(true);
+    for (const n of clone.querySelectorAll('[data-cgt]')) n.remove();
+    clone.classList.remove('cgt-fit');
+    scrub(clone);
+    const list = clone.matches('[role="tablist"]') ? clone : clone.querySelector('[role="tablist"]');
+    const cloneTabs = list ? nativeTabsIn(list) : [];
+    if (cloneTabs.length !== native.length) return null;
+    list.removeAttribute('data-cgt-sig');
+
+    // Clear Gmail's selected styling: whatever Primary (or the current
+    // category) had that the others don't.
+    if (selIndex >= 0) {
+      const classes = selectionClasses(native, src);
+      chainTo(cloneTabs[selIndex], list).forEach((el, depth) => {
+        for (const c of classes[depth] || []) el.classList.remove(c);
+      });
+    }
+    cloneTabs.forEach((t, i) => {
+      t.setAttribute('aria-selected', 'false');
+      t.setAttribute('tabindex', '0');
+      swallow(t);
+      t.addEventListener('click', (e) => {
+        e.preventDefault();
+        openNative(i);
+      });
+      t.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          openNative(i);
+        }
+      });
+    });
+
+    removeStrip();
+    const strip = document.createElement('div');
+    strip.className = 'cgt-strip cgt-mirror';
+    strip.setAttribute('data-cgt', 'strip');
+    strip.setAttribute('data-cgt-sig', sig);
+    strip.appendChild(clone);
+    main.prepend(strip);
+
+    if (!isVisible(list) || list.getBoundingClientRect().height < 10) {
+      strip.remove();
+      mirrorBroken = true;
+      return null;
+    }
+
+    const lastCell = cellFor(cloneTabs[cloneTabs.length - 1], list);
+    const tag = lastCell.tagName.toLowerCase();
+    const frag = document.createDocumentFragment();
+    for (const t of tabs) {
+      const cell = document.createElement(tag);
+      cell.setAttribute('data-cgt', t.id);
+      cell.className = 'cgt-cell';
+      if (tag === 'td') cell.setAttribute('role', 'heading');
+      themeFrom(cloneTabs[0], cell);
+      cell.appendChild(customTab(t, t.id === activeId));
+      frag.appendChild(cell);
+    }
+    lastCell.after(frag);
+    fitTablist(list);
+    return true;
+  }
+
+  // ---------- Surface 2b: a drawn strip (fallback) ----------
 
   function renderStrip(main, activeId, inboxActive) {
     const labels = nativeLabels.length ? nativeLabels : ['Inbox'];
@@ -329,7 +461,9 @@
     const bareInbox = C.isInboxHash(hash) && nativeLabels.length <= 1 && !pendingNative;
 
     if (main && tabs.length && settings.showStripOnResults && (onResults || bareInbox)) {
-      wrote = renderStrip(main, active ? active.id : null, !active) || wrote;
+      const mirrored = active ? renderMirror(main, active.id) : null;
+      if (mirrored === null) wrote = renderStrip(main, active ? active.id : null, !active) || wrote;
+      else wrote = mirrored || wrote;
     } else {
       wrote = removeStrip() || wrote;
     }
